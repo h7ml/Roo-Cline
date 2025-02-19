@@ -9,12 +9,15 @@ const buttonVariants = cva(
 	{
 		variants: {
 			variant: {
-				default: "bg-primary text-primary-foreground shadow hover:bg-primary/90",
-				destructive: "bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90",
-				outline: "border border-input bg-foreground shadow-sm hover:bg-foreground/80",
-				secondary: "bg-secondary text-secondary-foreground shadow-sm hover:bg-secondary/80",
-				ghost: "hover:bg-accent hover:text-accent-foreground",
+				default: "text-primary-foreground bg-primary shadow hover:bg-primary/90",
+				secondary: "text-secondary-foreground bg-secondary shadow-sm hover:bg-secondary/80",
+				outline:
+					"text-secondary-foreground bg-vscode-editor-background border border-vscode-dropdown-border shadow-sm hover:bg-vscode-editor-background/50",
+				ghost: "text-secondary-foreground hover:bg-accent hover:text-accent-foreground",
 				link: "text-primary underline-offset-4 hover:underline",
+				destructive: "text-destructive-foreground bg-destructive shadow-sm hover:bg-destructive/90",
+				combobox:
+					"text-secondary-foreground bg-vscode-input-background border border-vscode-input-border hover:bg-vscode-input-background/80",
 			},
 			size: {
 				default: "h-7 px-3",

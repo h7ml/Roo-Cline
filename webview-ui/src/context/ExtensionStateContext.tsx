@@ -8,6 +8,10 @@ import {
 	glamaDefaultModelInfo,
 	openRouterDefaultModelId,
 	openRouterDefaultModelInfo,
+	unboundDefaultModelId,
+	unboundDefaultModelInfo,
+	requestyDefaultModelId,
+	requestyDefaultModelInfo,
 } from "../../../src/shared/api"
 import { vscode } from "../utils/vscode"
 import { convertTextMateToHljs } from "../utils/textMateToHljs"
@@ -23,9 +27,12 @@ export interface ExtensionStateContextType extends ExtensionState {
 	showWelcome: boolean
 	theme: any
 	glamaModels: Record<string, ModelInfo>
+	requestyModels: Record<string, ModelInfo>
 	openRouterModels: Record<string, ModelInfo>
+	unboundModels: Record<string, ModelInfo>
 	openAiModels: string[]
 	mcpServers: McpServer[]
+	currentCheckpoint?: string
 	filePaths: string[]
 	openedTabs: Array<{ label: string; isActive: boolean; path?: string }>
 	setApiConfiguration: (config: ApiConfiguration) => void
@@ -41,6 +48,7 @@ export interface ExtensionStateContextType extends ExtensionState {
 	setSoundEnabled: (value: boolean) => void
 	setSoundVolume: (value: number) => void
 	setDiffEnabled: (value: boolean) => void
+	setCheckpointsEnabled: (value: boolean) => void
 	setBrowserViewportSize: (value: string) => void
 	setFuzzyMatchThreshold: (value: number) => void
 	preferredLanguage: string
@@ -74,6 +82,7 @@ export interface ExtensionStateContextType extends ExtensionState {
 	handleInputChange: (field: keyof ApiConfiguration, softUpdate?: boolean) => (event: any) => void
 	customModes: ModeConfig[]
 	setCustomModes: (value: ModeConfig[]) => void
+	setMaxOpenTabsContext: (value: number) => void
 }
 
 export const ExtensionStateContext = createContext<ExtensionStateContextType | undefined>(undefined)
@@ -88,6 +97,7 @@ export const ExtensionStateContextProvider: React.FC<{ children: React.ReactNode
 		soundEnabled: false,
 		soundVolume: 0.5,
 		diffEnabled: false,
+		checkpointsEnabled: false,
 		fuzzyMatchThreshold: 1.0,
 		preferredLanguage: "English",
 		writeDelayMs: 1000,
@@ -108,6 +118,7 @@ export const ExtensionStateContextProvider: React.FC<{ children: React.ReactNode
 		enhancementApiConfigId: "",
 		autoApprovalEnabled: false,
 		customModes: [],
+		maxOpenTabsContext: 20,
 	})
 
 	const [didHydrateState, setDidHydrateState] = useState(false)
@@ -121,9 +132,16 @@ export const ExtensionStateContextProvider: React.FC<{ children: React.ReactNode
 	const [openRouterModels, setOpenRouterModels] = useState<Record<string, ModelInfo>>({
 		[openRouterDefaultModelId]: openRouterDefaultModelInfo,
 	})
+	const [unboundModels, setUnboundModels] = useState<Record<string, ModelInfo>>({
+		[unboundDefaultModelId]: unboundDefaultModelInfo,
+	})
+	const [requestyModels, setRequestyModels] = useState<Record<string, ModelInfo>>({
+		[requestyDefaultModelId]: requestyDefaultModelInfo,
+	})
 
 	const [openAiModels, setOpenAiModels] = useState<string[]>([])
 	const [mcpServers, setMcpServers] = useState<McpServer[]>([])
+	const [currentCheckpoint, setCurrentCheckpoint] = useState<string>()
 
 	const setListApiConfigMeta = useCallback(
 		(value: ApiConfigMeta[]) => setState((prevState) => ({ ...prevState, listApiConfigMeta: value })),
@@ -135,7 +153,7 @@ export const ExtensionStateContextProvider: React.FC<{ children: React.ReactNode
 			vscode.postMessage({
 				type: "upsertApiConfiguration",
 				text: currentState.currentApiConfigName,
-				apiConfiguration: apiConfig,
+				apiConfiguration: { ...currentState.apiConfiguration, ...apiConfig },
 			})
 			return currentState // No state update needed
 		})
@@ -144,26 +162,12 @@ export const ExtensionStateContextProvider: React.FC<{ children: React.ReactNode
 	const handleInputChange = useCallback(
 		// Returns a function that handles an input change event for a specific API configuration field.
 		// The optional "softUpdate" flag determines whether to immediately update local state or send an external update.
-		(field: keyof ApiConfiguration, softUpdate?: boolean) => (event: any) => {
+		(field: keyof ApiConfiguration) => (event: any) => {
 			// Use the functional form of setState to ensure the latest state is used in the update logic.
 			setState((currentState) => {
-				if (softUpdate) {
-					// Return a new state object with the updated apiConfiguration.
-					// This will trigger a re-render with the new configuration value.
-					return {
-						...currentState,
-						apiConfiguration: { ...currentState.apiConfiguration, [field]: event.target.value },
-					}
-				} else {
-					// For non-soft updates, send a message to the VS Code extension with the updated config.
-					// This side effect communicates the change without updating local React state.
-					vscode.postMessage({
-						type: "upsertApiConfiguration",
-						text: currentState.currentApiConfigName,
-						apiConfiguration: { ...currentState.apiConfiguration, [field]: event.target.value },
-					})
-					// Return the unchanged state as no local state update is intended in this branch.
-					return currentState
+				return {
+					...currentState,
+					apiConfiguration: { ...currentState.apiConfiguration, [field]: event.target.value },
 				}
 			})
 		},
@@ -235,8 +239,25 @@ export const ExtensionStateContextProvider: React.FC<{ children: React.ReactNode
 					setOpenAiModels(updatedModels)
 					break
 				}
+				case "unboundModels": {
+					const updatedModels = message.unboundModels ?? {}
+					setUnboundModels(updatedModels)
+					break
+				}
+				case "requestyModels": {
+					const updatedModels = message.requestyModels ?? {}
+					setRequestyModels({
+						[requestyDefaultModelId]: requestyDefaultModelInfo, // in case the extension sent a model list without the default model
+						...updatedModels,
+					})
+					break
+				}
 				case "mcpServers": {
 					setMcpServers(message.mcpServers ?? [])
+					break
+				}
+				case "currentCheckpointUpdated": {
+					setCurrentCheckpoint(message.text)
 					break
 				}
 				case "listApiConfig": {
@@ -260,9 +281,12 @@ export const ExtensionStateContextProvider: React.FC<{ children: React.ReactNode
 		showWelcome,
 		theme,
 		glamaModels,
+		requestyModels,
 		openRouterModels,
 		openAiModels,
+		unboundModels,
 		mcpServers,
+		currentCheckpoint,
 		filePaths,
 		openedTabs,
 		soundVolume: state.soundVolume,
@@ -288,6 +312,7 @@ export const ExtensionStateContextProvider: React.FC<{ children: React.ReactNode
 		setSoundEnabled: (value) => setState((prevState) => ({ ...prevState, soundEnabled: value })),
 		setSoundVolume: (value) => setState((prevState) => ({ ...prevState, soundVolume: value })),
 		setDiffEnabled: (value) => setState((prevState) => ({ ...prevState, diffEnabled: value })),
+		setCheckpointsEnabled: (value) => setState((prevState) => ({ ...prevState, checkpointsEnabled: value })),
 		setBrowserViewportSize: (value: string) =>
 			setState((prevState) => ({ ...prevState, browserViewportSize: value })),
 		setFuzzyMatchThreshold: (value) => setState((prevState) => ({ ...prevState, fuzzyMatchThreshold: value })),
@@ -313,6 +338,7 @@ export const ExtensionStateContextProvider: React.FC<{ children: React.ReactNode
 		setAutoApprovalEnabled: (value) => setState((prevState) => ({ ...prevState, autoApprovalEnabled: value })),
 		handleInputChange,
 		setCustomModes: (value) => setState((prevState) => ({ ...prevState, customModes: value })),
+		setMaxOpenTabsContext: (value) => setState((prevState) => ({ ...prevState, maxOpenTabsContext: value })),
 	}
 
 	return <ExtensionStateContext.Provider value={contextValue}>{children}</ExtensionStateContext.Provider>

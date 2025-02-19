@@ -1,5 +1,71 @@
 # Roo Code Changelog
 
+## [3.3.21]
+
+- Fix input box revert issue and configuration loss during profile switch (thanks @System233!)
+- Fix default preferred language for zh-cn and zh-tw (thanks @System233!)
+- Fix Mistral integration (thanks @d-oit!)
+- Feature to mention `@terminal` to pull terminal output into context (thanks Cline!)
+- Fix system prompt to make sure Roo knows about all available modes
+- Enable streaming mode for OpenAI o1
+
+## [3.3.20]
+
+- Support project-specific custom modes in a .roomodes file
+- Add more Mistral models (thanks @d-oit and @bramburn!)
+- By popular request, make it so Ask mode can't write to Markdown files and is purely for chatting with
+- Add a setting to control the number of open editor tabs to tell the model about (665 is probably too many!)
+- Fix race condition bug with entering API key on the welcome screen
+
+## [3.3.19]
+
+- Fix a bug where aborting in the middle of file writes would not revert the write
+- Honor the VS Code theme for dialog backgrounds
+- Make it possible to clear out the default custom instructions for built-in modes
+- Add a help button that links to our new documentation site (which we would love help from the community to improve!)
+- Switch checkpoints logic to use a shadow git repository to work around issues with hot reloads and polluting existing repositories (thanks Cline for the inspiration!)
+
+## [3.3.18]
+
+- Add a per-API-configuration model temperature setting (thanks @joemanley201!)
+- Add retries for fetching usage stats from OpenRouter (thanks @jcbdev!)
+- Fix bug where disabled MCP servers would not show up in the settings on initialization (thanks @MuriloFP!)
+- Add the Requesty provider and clean up a lot of shared model picker code (thanks @samhvw8!)
+- Add a button on the Prompts tab to copy the full system prompt to the clipboard (thanks @mamertofabian!)
+- Fix issue where Ollama/LMStudio URLs would flicker back to previous while entering them in settings
+- Fix logic error where automatic retries were waiting twice as long as intended
+- Rework the checkpoints code to avoid conflicts with file locks on Windows (sorry for the hassle!)
+
+## [3.3.17]
+
+- Fix the restore checkpoint popover
+- Unset git config that was previously set incorrectly by the checkpoints feature
+
+## [3.3.16]
+
+- Support Volcano Ark platform through the OpenAI-compatible provider
+- Fix jumpiness while entering API config by updating on blur instead of input
+- Add tooltips on checkpoint actions and fix an issue where checkpoints were overwriting existing git name/email settings - thanks for the feedback!
+
+## [3.3.15]
+
+- Improvements to MCP initialization and server restarts (thanks @MuriloFP and @hannesrudolph!)
+- Add a copy button to the recent tasks (thanks @hannesrudolph!)
+- Improve the user experience for adding a new API profile
+- Another significant fix to API profile switching on the settings screen
+- Opt-in experimental version of checkpoints in the advanced settings
+
+## [3.3.14]
+
+- Should have skipped floor 13 like an elevator. This fixes the broken 3.3.13 release by reverting some changes to the deployment scripts.
+
+## [3.3.13]
+
+- Ensure the DeepSeek r1 model works with Ollama (thanks @sammcj!)
+- Enable context menu commands in the terminal (thanks @samhvw8!)
+- Improve sliding window truncation strategy for models that do not support prompt caching (thanks @nissa-seru!)
+- First step of a more fundamental fix to the bugs around switching API profiles. If you've been having issues with this please try again and let us know if works any better! More to come soon, including fixing the laggy text entry in provider settings.
+
 ## [3.3.12]
 
 - Bug fix to changing a mode's API configuration on the prompts tab
