@@ -16,6 +16,7 @@ import { vscode } from "../../utils/vscode"
 import { WebviewMessage } from "../../../../src/shared/WebviewMessage"
 import { Mode, getAllModes } from "../../../../src/shared/modes"
 import { CaretIcon } from "../common/CaretIcon"
+import { convertToMentionPath } from "../../utils/path-mentions"
 
 interface ChatTextAreaProps {
 	inputValue: string
@@ -50,7 +51,7 @@ const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 		},
 		ref,
 	) => {
-		const { filePaths, openedTabs, currentApiConfigName, listApiConfigMeta, customModes } = useExtensionState()
+		const { filePaths, openedTabs, currentApiConfigName, listApiConfigMeta, customModes, cwd } = useExtensionState()
 		const [gitCommits, setGitCommits] = useState<any[]>([])
 		const [showDropdown, setShowDropdown] = useState(false)
 
@@ -137,6 +138,7 @@ const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 		const queryItems = useMemo(() => {
 			return [
 				{ type: ContextMenuOptionType.Problems, value: "problems" },
+				{ type: ContextMenuOptionType.Terminal, value: "terminal" },
 				...gitCommits,
 				...openedTabs
 					.filter((tab) => tab.path)
@@ -214,6 +216,8 @@ const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 						insertValue = value || ""
 					} else if (type === ContextMenuOptionType.Problems) {
 						insertValue = "problems"
+					} else if (type === ContextMenuOptionType.Terminal) {
+						insertValue = "terminal"
 					} else if (type === ContextMenuOptionType.Git) {
 						insertValue = value || ""
 					}
@@ -586,18 +590,45 @@ const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 					const files = Array.from(e.dataTransfer.files)
 					const text = e.dataTransfer.getData("text")
 					if (text) {
-						const newValue = inputValue.slice(0, cursorPosition) + text + inputValue.slice(cursorPosition)
-						setInputValue(newValue)
-						const newCursorPosition = cursorPosition + text.length
-						setCursorPosition(newCursorPosition)
-						setIntendedCursorPosition(newCursorPosition)
+						// Split text on newlines to handle multiple files
+						const lines = text.split(/\r?\n/).filter((line) => line.trim() !== "")
+
+						if (lines.length > 0) {
+							// Process each line as a separate file path
+							let newValue = inputValue.slice(0, cursorPosition)
+							let totalLength = 0
+
+							lines.forEach((line, index) => {
+								// Convert each path to a mention-friendly format
+								const mentionText = convertToMentionPath(line, cwd)
+								newValue += mentionText
+								totalLength += mentionText.length
+
+								// Add space after each mention except the last one
+								if (index < lines.length - 1) {
+									newValue += " "
+									totalLength += 1
+								}
+							})
+
+							// Add space after the last mention and append the rest of the input
+							newValue += " " + inputValue.slice(cursorPosition)
+							totalLength += 1
+
+							setInputValue(newValue)
+							const newCursorPosition = cursorPosition + totalLength
+							setCursorPosition(newCursorPosition)
+							setIntendedCursorPosition(newCursorPosition)
+						}
 						return
 					}
+
 					const acceptedTypes = ["png", "jpeg", "webp"]
 					const imageFiles = files.filter((file) => {
 						const [type, subtype] = file.type.split("/")
 						return type === "image" && acceptedTypes.includes(subtype)
 					})
+
 					if (!shouldDisableImages && imageFiles.length > 0) {
 						const imagePromises = imageFiles.map((file) => {
 							return new Promise<string | null>((resolve) => {
