@@ -1,14 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useState } from "react"
 import { useEvent } from "react-use"
 import { ApiConfigMeta, ExtensionMessage, ExtensionState } from "../../../src/shared/ExtensionMessage"
-import {
-	ApiConfiguration,
-	ModelInfo,
-	glamaDefaultModelId,
-	glamaDefaultModelInfo,
-	openRouterDefaultModelId,
-	openRouterDefaultModelInfo,
-} from "../../../src/shared/api"
+import { ApiConfiguration } from "../../../src/shared/api"
 import { vscode } from "../utils/vscode"
 import { convertTextMateToHljs } from "../utils/textMateToHljs"
 import { findLastIndex } from "../../../src/shared/array"
@@ -22,10 +15,8 @@ export interface ExtensionStateContextType extends ExtensionState {
 	didHydrateState: boolean
 	showWelcome: boolean
 	theme: any
-	glamaModels: Record<string, ModelInfo>
-	openRouterModels: Record<string, ModelInfo>
-	openAiModels: string[]
 	mcpServers: McpServer[]
+	currentCheckpoint?: string
 	filePaths: string[]
 	openedTabs: Array<{ label: string; isActive: boolean; path?: string }>
 	setApiConfiguration: (config: ApiConfiguration) => void
@@ -36,11 +27,13 @@ export interface ExtensionStateContextType extends ExtensionState {
 	setAlwaysAllowBrowser: (value: boolean) => void
 	setAlwaysAllowMcp: (value: boolean) => void
 	setAlwaysAllowModeSwitch: (value: boolean) => void
+	setBrowserToolEnabled: (value: boolean) => void
 	setShowAnnouncement: (value: boolean) => void
 	setAllowedCommands: (value: string[]) => void
 	setSoundEnabled: (value: boolean) => void
 	setSoundVolume: (value: number) => void
 	setDiffEnabled: (value: boolean) => void
+	setEnableCheckpoints: (value: boolean) => void
 	setBrowserViewportSize: (value: string) => void
 	setFuzzyMatchThreshold: (value: number) => void
 	preferredLanguage: string
@@ -62,7 +55,6 @@ export interface ExtensionStateContextType extends ExtensionState {
 	setRateLimitSeconds: (value: number) => void
 	setCurrentApiConfigName: (value: string) => void
 	setListApiConfigMeta: (value: ApiConfigMeta[]) => void
-	onUpdateApiConfig: (apiConfig: ApiConfiguration) => void
 	mode: Mode
 	setMode: (value: Mode) => void
 	setCustomModePrompts: (value: CustomModePrompts) => void
@@ -71,12 +63,38 @@ export interface ExtensionStateContextType extends ExtensionState {
 	setEnhancementApiConfigId: (value: string) => void
 	setExperimentEnabled: (id: ExperimentId, enabled: boolean) => void
 	setAutoApprovalEnabled: (value: boolean) => void
-	handleInputChange: (field: keyof ApiConfiguration, softUpdate?: boolean) => (event: any) => void
 	customModes: ModeConfig[]
 	setCustomModes: (value: ModeConfig[]) => void
+	setMaxOpenTabsContext: (value: number) => void
 }
 
 export const ExtensionStateContext = createContext<ExtensionStateContextType | undefined>(undefined)
+
+export const mergeExtensionState = (prevState: ExtensionState, newState: ExtensionState) => {
+	const {
+		apiConfiguration: prevApiConfiguration,
+		customModePrompts: prevCustomModePrompts,
+		customSupportPrompts: prevCustomSupportPrompts,
+		experiments: prevExperiments,
+		...prevRest
+	} = prevState
+
+	const {
+		apiConfiguration: newApiConfiguration,
+		customModePrompts: newCustomModePrompts,
+		customSupportPrompts: newCustomSupportPrompts,
+		experiments: newExperiments,
+		...newRest
+	} = newState
+
+	const apiConfiguration = { ...prevApiConfiguration, ...newApiConfiguration }
+	const customModePrompts = { ...prevCustomModePrompts, ...newCustomModePrompts }
+	const customSupportPrompts = { ...prevCustomSupportPrompts, ...newCustomSupportPrompts }
+	const experiments = { ...prevExperiments, ...newExperiments }
+	const rest = { ...prevRest, ...newRest }
+
+	return { ...rest, apiConfiguration, customModePrompts, customSupportPrompts, experiments }
+}
 
 export const ExtensionStateContextProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 	const [state, setState] = useState<ExtensionState>({
@@ -88,6 +106,8 @@ export const ExtensionStateContextProvider: React.FC<{ children: React.ReactNode
 		soundEnabled: false,
 		soundVolume: 0.5,
 		diffEnabled: false,
+		enableCheckpoints: true,
+		checkpointStorage: "task",
 		fuzzyMatchThreshold: 1.0,
 		preferredLanguage: "English",
 		writeDelayMs: 1000,
@@ -108,81 +128,32 @@ export const ExtensionStateContextProvider: React.FC<{ children: React.ReactNode
 		enhancementApiConfigId: "",
 		autoApprovalEnabled: false,
 		customModes: [],
+		maxOpenTabsContext: 20,
+		cwd: "",
+		browserToolEnabled: true,
 	})
 
 	const [didHydrateState, setDidHydrateState] = useState(false)
 	const [showWelcome, setShowWelcome] = useState(false)
 	const [theme, setTheme] = useState<any>(undefined)
 	const [filePaths, setFilePaths] = useState<string[]>([])
-	const [glamaModels, setGlamaModels] = useState<Record<string, ModelInfo>>({
-		[glamaDefaultModelId]: glamaDefaultModelInfo,
-	})
 	const [openedTabs, setOpenedTabs] = useState<Array<{ label: string; isActive: boolean; path?: string }>>([])
-	const [openRouterModels, setOpenRouterModels] = useState<Record<string, ModelInfo>>({
-		[openRouterDefaultModelId]: openRouterDefaultModelInfo,
-	})
 
-	const [openAiModels, setOpenAiModels] = useState<string[]>([])
 	const [mcpServers, setMcpServers] = useState<McpServer[]>([])
+	const [currentCheckpoint, setCurrentCheckpoint] = useState<string>()
 
 	const setListApiConfigMeta = useCallback(
 		(value: ApiConfigMeta[]) => setState((prevState) => ({ ...prevState, listApiConfigMeta: value })),
 		[],
 	)
-
-	const onUpdateApiConfig = useCallback((apiConfig: ApiConfiguration) => {
-		setState((currentState) => {
-			vscode.postMessage({
-				type: "upsertApiConfiguration",
-				text: currentState.currentApiConfigName,
-				apiConfiguration: apiConfig,
-			})
-			return currentState // No state update needed
-		})
-	}, [])
-
-	const handleInputChange = useCallback(
-		// Returns a function that handles an input change event for a specific API configuration field.
-		// The optional "softUpdate" flag determines whether to immediately update local state or send an external update.
-		(field: keyof ApiConfiguration, softUpdate?: boolean) => (event: any) => {
-			// Use the functional form of setState to ensure the latest state is used in the update logic.
-			setState((currentState) => {
-				if (softUpdate) {
-					// Return a new state object with the updated apiConfiguration.
-					// This will trigger a re-render with the new configuration value.
-					return {
-						...currentState,
-						apiConfiguration: { ...currentState.apiConfiguration, [field]: event.target.value },
-					}
-				} else {
-					// For non-soft updates, send a message to the VS Code extension with the updated config.
-					// This side effect communicates the change without updating local React state.
-					vscode.postMessage({
-						type: "upsertApiConfiguration",
-						text: currentState.currentApiConfigName,
-						apiConfiguration: { ...currentState.apiConfiguration, [field]: event.target.value },
-					})
-					// Return the unchanged state as no local state update is intended in this branch.
-					return currentState
-				}
-			})
-		},
-		[],
-	)
-
 	const handleMessage = useCallback(
 		(event: MessageEvent) => {
 			const message: ExtensionMessage = event.data
 			switch (message.type) {
 				case "state": {
 					const newState = message.state!
-					setState((prevState) => ({
-						...prevState,
-						...newState,
-					}))
-					const config = newState.apiConfiguration
-					const hasKey = checkExistKey(config)
-					setShowWelcome(!hasKey)
+					setState((prevState) => mergeExtensionState(prevState, newState))
+					setShowWelcome(!checkExistKey(newState.apiConfiguration))
 					setDidHydrateState(true)
 					break
 				}
@@ -214,29 +185,12 @@ export const ExtensionStateContextProvider: React.FC<{ children: React.ReactNode
 					})
 					break
 				}
-				case "glamaModels": {
-					const updatedModels = message.glamaModels ?? {}
-					setGlamaModels({
-						[glamaDefaultModelId]: glamaDefaultModelInfo, // in case the extension sent a model list without the default model
-						...updatedModels,
-					})
-					break
-				}
-				case "openRouterModels": {
-					const updatedModels = message.openRouterModels ?? {}
-					setOpenRouterModels({
-						[openRouterDefaultModelId]: openRouterDefaultModelInfo, // in case the extension sent a model list without the default model
-						...updatedModels,
-					})
-					break
-				}
-				case "openAiModels": {
-					const updatedModels = message.openAiModels ?? []
-					setOpenAiModels(updatedModels)
-					break
-				}
 				case "mcpServers": {
 					setMcpServers(message.mcpServers ?? [])
+					break
+				}
+				case "currentCheckpointUpdated": {
+					setCurrentCheckpoint(message.text)
 					break
 				}
 				case "listApiConfig": {
@@ -259,10 +213,8 @@ export const ExtensionStateContextProvider: React.FC<{ children: React.ReactNode
 		didHydrateState,
 		showWelcome,
 		theme,
-		glamaModels,
-		openRouterModels,
-		openAiModels,
 		mcpServers,
+		currentCheckpoint,
 		filePaths,
 		openedTabs,
 		soundVolume: state.soundVolume,
@@ -274,7 +226,10 @@ export const ExtensionStateContextProvider: React.FC<{ children: React.ReactNode
 		setApiConfiguration: (value) =>
 			setState((prevState) => ({
 				...prevState,
-				apiConfiguration: value,
+				apiConfiguration: {
+					...prevState.apiConfiguration,
+					...value,
+				},
 			})),
 		setCustomInstructions: (value) => setState((prevState) => ({ ...prevState, customInstructions: value })),
 		setAlwaysAllowReadOnly: (value) => setState((prevState) => ({ ...prevState, alwaysAllowReadOnly: value })),
@@ -288,6 +243,7 @@ export const ExtensionStateContextProvider: React.FC<{ children: React.ReactNode
 		setSoundEnabled: (value) => setState((prevState) => ({ ...prevState, soundEnabled: value })),
 		setSoundVolume: (value) => setState((prevState) => ({ ...prevState, soundVolume: value })),
 		setDiffEnabled: (value) => setState((prevState) => ({ ...prevState, diffEnabled: value })),
+		setEnableCheckpoints: (value) => setState((prevState) => ({ ...prevState, enableCheckpoints: value })),
 		setBrowserViewportSize: (value: string) =>
 			setState((prevState) => ({ ...prevState, browserViewportSize: value })),
 		setFuzzyMatchThreshold: (value) => setState((prevState) => ({ ...prevState, fuzzyMatchThreshold: value })),
@@ -304,15 +260,15 @@ export const ExtensionStateContextProvider: React.FC<{ children: React.ReactNode
 		setRateLimitSeconds: (value) => setState((prevState) => ({ ...prevState, rateLimitSeconds: value })),
 		setCurrentApiConfigName: (value) => setState((prevState) => ({ ...prevState, currentApiConfigName: value })),
 		setListApiConfigMeta,
-		onUpdateApiConfig,
 		setMode: (value: Mode) => setState((prevState) => ({ ...prevState, mode: value })),
 		setCustomModePrompts: (value) => setState((prevState) => ({ ...prevState, customModePrompts: value })),
 		setCustomSupportPrompts: (value) => setState((prevState) => ({ ...prevState, customSupportPrompts: value })),
 		setEnhancementApiConfigId: (value) =>
 			setState((prevState) => ({ ...prevState, enhancementApiConfigId: value })),
 		setAutoApprovalEnabled: (value) => setState((prevState) => ({ ...prevState, autoApprovalEnabled: value })),
-		handleInputChange,
 		setCustomModes: (value) => setState((prevState) => ({ ...prevState, customModes: value })),
+		setMaxOpenTabsContext: (value) => setState((prevState) => ({ ...prevState, maxOpenTabsContext: value })),
+		setBrowserToolEnabled: (value) => setState((prevState) => ({ ...prevState, browserToolEnabled: value })),
 	}
 
 	return <ExtensionStateContext.Provider value={contextValue}>{children}</ExtensionStateContext.Provider>

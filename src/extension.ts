@@ -6,6 +6,7 @@ import "./utils/path" // Necessary to have access to String.prototype.toPosix.
 import { CodeActionProvider } from "./core/CodeActionProvider"
 import { DIFF_VIEW_URI_SCHEME } from "./integrations/editor/DiffViewProvider"
 import { handleUri, registerCommands, registerCodeActions } from "./activate"
+import { McpServerManager } from "./services/mcp/McpServerManager"
 
 /**
  * Built using https://github.com/microsoft/vscode-webview-ui-toolkit
@@ -16,10 +17,24 @@ import { handleUri, registerCommands, registerCodeActions } from "./activate"
  */
 
 let outputChannel: vscode.OutputChannel
+let extensionContext: vscode.ExtensionContext
+
+// Callback mapping of human relay response
+const humanRelayCallbacks = new Map<string, (response: string | undefined) => void>()
+
+/**
+ * Register a callback function for human relay response
+ * @param requestId
+ * @param callback
+ */
+export function registerHumanRelayCallback(requestId: string, callback: (response: string | undefined) => void): void {
+	humanRelayCallbacks.set(requestId, callback)
+}
 
 // This method is called when your extension is activated.
 // Your extension is activated the very first time the command is executed.
 export function activate(context: vscode.ExtensionContext) {
+	extensionContext = context
 	outputChannel = vscode.window.createOutputChannel("Roo-Code")
 	context.subscriptions.push(outputChannel)
 	outputChannel.appendLine("Roo-Code extension activated")
@@ -41,6 +56,40 @@ export function activate(context: vscode.ExtensionContext) {
 	)
 
 	registerCommands({ context, outputChannel, provider: sidebarProvider })
+
+	// Register human relay callback registration command
+	context.subscriptions.push(
+		vscode.commands.registerCommand(
+			"roo-cline.registerHumanRelayCallback",
+			(requestId: string, callback: (response: string | undefined) => void) => {
+				registerHumanRelayCallback(requestId, callback)
+			},
+		),
+	)
+
+	// Register human relay response processing command
+	context.subscriptions.push(
+		vscode.commands.registerCommand(
+			"roo-cline.handleHumanRelayResponse",
+			(response: { requestId: string; text?: string; cancelled?: boolean }) => {
+				const callback = humanRelayCallbacks.get(response.requestId)
+				if (callback) {
+					if (response.cancelled) {
+						callback(undefined)
+					} else {
+						callback(response.text)
+					}
+					humanRelayCallbacks.delete(response.requestId)
+				}
+			},
+		),
+	)
+
+	context.subscriptions.push(
+		vscode.commands.registerCommand("roo-cline.unregisterHumanRelayCallback", (requestId: string) => {
+			humanRelayCallbacks.delete(requestId)
+		}),
+	)
 
 	/**
 	 * We use the text document content provider API to show the left side for diff
@@ -83,6 +132,8 @@ export function activate(context: vscode.ExtensionContext) {
 }
 
 // This method is called when your extension is deactivated.
-export function deactivate() {
+export async function deactivate() {
 	outputChannel.appendLine("Roo-Code extension deactivated")
+	// Clean up MCP server manager
+	await McpServerManager.cleanup(extensionContext)
 }
