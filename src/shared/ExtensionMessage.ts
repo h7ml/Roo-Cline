@@ -7,6 +7,8 @@ import { GitCommit } from "../utils/git"
 import { Mode, CustomModePrompts, ModeConfig } from "./modes"
 import { CustomSupportPrompts } from "./support-prompt"
 import { ExperimentId } from "./experiments"
+import { CheckpointStorage } from "./checkpoints"
+import { TelemetrySetting } from "./TelemetrySetting"
 
 export interface LanguageModelChatSelector {
 	vendor?: string
@@ -27,8 +29,10 @@ export interface ExtensionMessage {
 		| "workspaceUpdated"
 		| "invoke"
 		| "partialMessage"
-		| "glamaModels"
 		| "openRouterModels"
+		| "glamaModels"
+		| "unboundModels"
+		| "requestyModels"
 		| "openAiModels"
 		| "mcpServers"
 		| "enhancedPrompt"
@@ -42,6 +46,11 @@ export interface ExtensionMessage {
 		| "autoApprovalEnabled"
 		| "updateCustomMode"
 		| "deleteCustomMode"
+		| "currentCheckpointUpdated"
+		| "showHumanRelayDialog"
+		| "humanRelayResponse"
+		| "humanRelayCancel"
+		| "browserToolEnabled"
 	text?: string
 	action?:
 		| "chatButtonClicked"
@@ -63,8 +72,10 @@ export interface ExtensionMessage {
 		path?: string
 	}>
 	partialMessage?: ClineMessage
-	glamaModels?: Record<string, ModelInfo>
 	openRouterModels?: Record<string, ModelInfo>
+	glamaModels?: Record<string, ModelInfo>
+	unboundModels?: Record<string, ModelInfo>
+	requestyModels?: Record<string, ModelInfo>
 	openAiModels?: string[]
 	mcpServers?: McpServer[]
 	commits?: GitCommit[]
@@ -98,19 +109,23 @@ export interface ExtensionState {
 	alwaysAllowMcp?: boolean
 	alwaysApproveResubmit?: boolean
 	alwaysAllowModeSwitch?: boolean
+	browserToolEnabled?: boolean
 	requestDelaySeconds: number
 	rateLimitSeconds: number // Minimum time between successive requests (0 = disabled)
 	uriScheme?: string
+	currentTaskItem?: HistoryItem
 	allowedCommands?: string[]
 	soundEnabled?: boolean
 	soundVolume?: number
 	diffEnabled?: boolean
+	enableCheckpoints: boolean
+	checkpointStorage: CheckpointStorage
 	browserViewportSize?: string
 	screenshotQuality?: number
 	fuzzyMatchThreshold?: number
 	preferredLanguage: string
 	writeDelayMs: number
-	terminalOutputLineLimit?: number
+	terminalOutputLimit?: number
 	mcpEnabled: boolean
 	enableMcpServerCreation: boolean
 	mode: Mode
@@ -120,6 +135,12 @@ export interface ExtensionState {
 	autoApprovalEnabled?: boolean
 	customModes: ModeConfig[]
 	toolRequirements?: Record<string, boolean> // Map of tool names to their requirements (e.g. {"apply_diff": true} if diffEnabled)
+	maxOpenTabsContext: number // Maximum number of VSCode open tabs to include in context (0-500)
+	cwd?: string // Current working directory
+	telemetrySetting: TelemetrySetting
+	telemetryKey?: string
+	machineId?: string
+	showRooIgnoredFiles: boolean // Whether to show .rooignore'd files in listings
 }
 
 export interface ClineMessage {
@@ -131,6 +152,8 @@ export interface ClineMessage {
 	images?: string[]
 	partial?: boolean
 	reasoning?: string
+	conversationHistoryIndex?: number
+	checkpoint?: Record<string, unknown>
 }
 
 export type ClineAsk =
@@ -151,13 +174,14 @@ export type ClineSay =
 	| "error"
 	| "api_req_started"
 	| "api_req_finished"
+	| "api_req_retried"
+	| "api_req_retry_delayed"
+	| "api_req_deleted"
 	| "text"
 	| "reasoning"
 	| "completion_result"
 	| "user_feedback"
 	| "user_feedback_diff"
-	| "api_req_retried"
-	| "api_req_retry_delayed"
 	| "command_output"
 	| "tool"
 	| "shell_integration_warning"
@@ -168,6 +192,8 @@ export type ClineSay =
 	| "mcp_server_response"
 	| "new_task_started"
 	| "new_task"
+	| "checkpoint_saved"
+	| "rooignore_error"
 
 export interface ClineSayTool {
 	tool:
@@ -224,6 +250,24 @@ export interface ClineApiReqInfo {
 	cost?: number
 	cancelReason?: ClineApiReqCancelReason
 	streamingFailedMessage?: string
+}
+
+// Human relay related message types
+export interface ShowHumanRelayDialogMessage {
+	type: "showHumanRelayDialog"
+	requestId: string
+	promptText: string
+}
+
+export interface HumanRelayResponseMessage {
+	type: "humanRelayResponse"
+	requestId: string
+	text: string
+}
+
+export interface HumanRelayCancelMessage {
+	type: "humanRelayCancel"
+	requestId: string
 }
 
 export type ClineApiReqCancelReason = "streaming_failed" | "user_cancelled"

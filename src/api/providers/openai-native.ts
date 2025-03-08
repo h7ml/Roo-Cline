@@ -1,6 +1,6 @@
 import { Anthropic } from "@anthropic-ai/sdk"
 import OpenAI from "openai"
-import { ApiHandler, SingleCompletionHandler } from "../"
+import { SingleCompletionHandler } from "../"
 import {
 	ApiHandlerOptions,
 	ModelInfo,
@@ -10,19 +10,22 @@ import {
 } from "../../shared/api"
 import { convertToOpenAiMessages } from "../transform/openai-format"
 import { ApiStream } from "../transform/stream"
+import { BaseProvider } from "./base-provider"
 
-export class OpenAiNativeHandler implements ApiHandler, SingleCompletionHandler {
-	private options: ApiHandlerOptions
+const OPENAI_NATIVE_DEFAULT_TEMPERATURE = 0
+
+export class OpenAiNativeHandler extends BaseProvider implements SingleCompletionHandler {
+	protected options: ApiHandlerOptions
 	private client: OpenAI
 
 	constructor(options: ApiHandlerOptions) {
+		super()
 		this.options = options
-		this.client = new OpenAI({
-			apiKey: this.options.openAiNativeApiKey,
-		})
+		const apiKey = this.options.openAiNativeApiKey ?? "not-provided"
+		this.client = new OpenAI({ apiKey })
 	}
 
-	async *createMessage(systemPrompt: string, messages: Anthropic.Messages.MessageParam[]): ApiStream {
+	override async *createMessage(systemPrompt: string, messages: Anthropic.Messages.MessageParam[]): ApiStream {
 		const modelId = this.getModel().id
 
 		if (modelId.startsWith("o1")) {
@@ -41,7 +44,7 @@ export class OpenAiNativeHandler implements ApiHandler, SingleCompletionHandler 
 	private async *handleO1FamilyMessage(
 		modelId: string,
 		systemPrompt: string,
-		messages: Anthropic.Messages.MessageParam[]
+		messages: Anthropic.Messages.MessageParam[],
 	): ApiStream {
 		// o1 supports developer prompt with formatting
 		// o1-preview and o1-mini only support user messages
@@ -55,15 +58,17 @@ export class OpenAiNativeHandler implements ApiHandler, SingleCompletionHandler 
 				},
 				...convertToOpenAiMessages(messages),
 			],
+			stream: true,
+			stream_options: { include_usage: true },
 		})
 
-		yield* this.yieldResponseData(response)
+		yield* this.handleStreamResponse(response)
 	}
 
 	private async *handleO3FamilyMessage(
 		modelId: string,
 		systemPrompt: string,
-		messages: Anthropic.Messages.MessageParam[]
+		messages: Anthropic.Messages.MessageParam[],
 	): ApiStream {
 		const stream = await this.client.chat.completions.create({
 			model: "o3-mini",
@@ -85,11 +90,11 @@ export class OpenAiNativeHandler implements ApiHandler, SingleCompletionHandler 
 	private async *handleDefaultModelMessage(
 		modelId: string,
 		systemPrompt: string,
-		messages: Anthropic.Messages.MessageParam[]
+		messages: Anthropic.Messages.MessageParam[],
 	): ApiStream {
 		const stream = await this.client.chat.completions.create({
 			model: modelId,
-			temperature: 0,
+			temperature: this.options.modelTemperature ?? OPENAI_NATIVE_DEFAULT_TEMPERATURE,
 			messages: [{ role: "system", content: systemPrompt }, ...convertToOpenAiMessages(messages)],
 			stream: true,
 			stream_options: { include_usage: true },
@@ -98,9 +103,7 @@ export class OpenAiNativeHandler implements ApiHandler, SingleCompletionHandler 
 		yield* this.handleStreamResponse(stream)
 	}
 
-	private async *yieldResponseData(
-		response: OpenAI.Chat.Completions.ChatCompletion
-	): ApiStream {
+	private async *yieldResponseData(response: OpenAI.Chat.Completions.ChatCompletion): ApiStream {
 		yield {
 			type: "text",
 			text: response.choices[0]?.message.content || "",
@@ -112,9 +115,7 @@ export class OpenAiNativeHandler implements ApiHandler, SingleCompletionHandler 
 		}
 	}
 
-	private async *handleStreamResponse(
-		stream: AsyncIterable<OpenAI.Chat.Completions.ChatCompletionChunk>
-	): ApiStream {
+	private async *handleStreamResponse(stream: AsyncIterable<OpenAI.Chat.Completions.ChatCompletionChunk>): ApiStream {
 		for await (const chunk of stream) {
 			const delta = chunk.choices[0]?.delta
 			if (delta?.content) {
@@ -134,7 +135,7 @@ export class OpenAiNativeHandler implements ApiHandler, SingleCompletionHandler 
 		}
 	}
 
-	getModel(): { id: OpenAiNativeModelId; info: ModelInfo } {
+	override getModel(): { id: OpenAiNativeModelId; info: ModelInfo } {
 		const modelId = this.options.apiModelId
 		if (modelId && modelId in openAiNativeModels) {
 			const id = modelId as OpenAiNativeModelId
@@ -168,7 +169,7 @@ export class OpenAiNativeHandler implements ApiHandler, SingleCompletionHandler 
 
 	private getO1CompletionOptions(
 		modelId: string,
-		prompt: string
+		prompt: string,
 	): OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming {
 		return {
 			model: modelId,
@@ -178,7 +179,7 @@ export class OpenAiNativeHandler implements ApiHandler, SingleCompletionHandler 
 
 	private getO3CompletionOptions(
 		modelId: string,
-		prompt: string
+		prompt: string,
 	): OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming {
 		return {
 			model: "o3-mini",
@@ -189,12 +190,12 @@ export class OpenAiNativeHandler implements ApiHandler, SingleCompletionHandler 
 
 	private getDefaultCompletionOptions(
 		modelId: string,
-		prompt: string
+		prompt: string,
 	): OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming {
 		return {
 			model: modelId,
 			messages: [{ role: "user", content: prompt }],
-			temperature: 0,
+			temperature: this.options.modelTemperature ?? OPENAI_NATIVE_DEFAULT_TEMPERATURE,
 		}
 	}
 }

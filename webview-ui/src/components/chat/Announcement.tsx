@@ -1,8 +1,5 @@
 import { VSCodeButton, VSCodeLink } from "@vscode/webview-ui-toolkit/react"
 import { memo } from "react"
-// import VSCodeButtonLink from "./VSCodeButtonLink"
-// import { getOpenRouterAuthUrl } from "./ApiOptions"
-// import { vscode } from "../utils/vscode"
 
 interface AnnouncementProps {
 	version: string
@@ -25,39 +22,56 @@ const Announcement = ({ version, hideAnnouncement }: AnnouncementProps) => {
 			<VSCodeButton
 				appearance="icon"
 				onClick={hideAnnouncement}
+				title="Hide announcement"
 				style={{ position: "absolute", top: "8px", right: "8px" }}>
 				<span className="codicon codicon-close"></span>
 			</VSCodeButton>
-			<h2 style={{ margin: "0 0 8px" }}>🎉{"  "}Introducing Roo Code 3.2</h2>
+			<h2 style={{ margin: "0 0 8px" }}>🎉{"  "}Roo Code 3.8 Released</h2>
 
 			<p style={{ margin: "5px 0px" }}>
-				Our biggest update yet is here - we're officially changing our name from Roo Cline to Roo Code! After
-				growing beyond 50,000 installations, we're ready to chart our own course. Our heartfelt thanks to
-				everyone in the Cline community who helped us reach this milestone.
+				Roo Code 3.8 is out with performance boosts, new features, and bug fixes.
 			</p>
 
-			<h3 style={{ margin: "12px 0 8px" }}>Custom Modes: Celebrating Our New Identity</h3>
+			<h3 style={{ margin: "12px 0 8px" }}>What's New</h3>
 			<p style={{ margin: "5px 0px" }}>
-				To mark this new chapter, we're introducing the power to shape Roo Code into any role you need! Create
-				specialized personas and create an entire team of agents with deeply customized prompts:
 				<ul style={{ margin: "4px 0 6px 20px", padding: 0 }}>
-					<li>QA Engineers who write thorough test cases and catch edge cases</li>
-					<li>Product Managers who excel at user stories and feature prioritization</li>
-					<li>UI/UX Designers who craft beautiful, accessible interfaces</li>
-					<li>Code Reviewers who ensure quality and maintainability</li>
+					<li>• Faster asynchronous checkpoints</li>
+					<li>• Support for .rooignore files</li>
+					<li>• Fixed terminal & gray screen issues</li>
+					<li>• Roo Code can run in multiple windows</li>
+					<li>• Experimental multi-diff editing strategy</li>
+					<li>• Subtask to parent task communication</li>
+					<li>• Updated DeepSeek provider</li>
+					<li>• New "Human Relay" provider</li>
 				</ul>
-				Just click the <span className="codicon codicon-notebook" style={{ fontSize: "10px" }}></span> icon to
-				get started with Custom Modes!
 			</p>
 
-			<h3 style={{ margin: "12px 0 8px" }}>Join Us for the Next Chapter</h3>
-			<p style={{ margin: "5px 0px" }}>
-				We can't wait to see how you'll push Roo Code's potential even further! Share your custom modes and join
-				the discussion at{" "}
-				<VSCodeLink href="https://www.reddit.com/r/RooCode" style={{ display: "inline" }}>
-					reddit.com/r/RooCode
-				</VSCodeLink>
-				.
+			<p style={{ margin: "10px 0px 0px" }}>
+				Get more details and discuss in{" "}
+				<VSCodeLink
+					href="https://discord.gg/roocode"
+					onClick={(e) => {
+						e.preventDefault()
+						window.postMessage(
+							{ type: "action", action: "openExternal", data: { url: "https://discord.gg/roocode" } },
+							"*",
+						)
+					}}>
+					Discord
+				</VSCodeLink>{" "}
+				and{" "}
+				<VSCodeLink
+					href="https://reddit.com/r/RooCode"
+					onClick={(e) => {
+						e.preventDefault()
+						window.postMessage(
+							{ type: "action", action: "openExternal", data: { url: "https://reddit.com/r/RooCode" } },
+							"*",
+						)
+					}}>
+					Reddit
+				</VSCodeLink>{" "}
+				🚀
 			</p>
 		</div>
 	)
